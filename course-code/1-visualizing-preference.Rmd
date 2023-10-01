@@ -18,6 +18,12 @@ author: "Fumeng Yang, Abhraneel Sarmar, Maryam Hedayati"
 This document provides the code for visualizing preference, 
 Our research question is people's badge/button preference over two designs: `cat` and `logo`. They are measured by three statements, each on a 5-point Likert scale. The survey is at https://northwestern.az1.qualtrics.com/jfe/form/SV_1NqUXVkcvPvIKQm. 
 
+```{css, echo=FALSE}
+div {
+  overflow: scroll;
+}
+```
+
 # Introduction
 
 We first load packages
