@@ -1,10 +1,16 @@
 ---
 title: "Visualizing the preference data"
 output: 
-   github_document:
-    html_preview: false
+  html_document: 
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
     df_print: kable
     number_sections: yes
+    theme: flatly
+    highlight: tango
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 author: "Fumeng Yang, Abhraneel Sarmar, Maryam Hedayati"
 ---
@@ -16,7 +22,7 @@ Our research question is people's badge/button preference over two designs: `cat
 
 We first load packages
 
-```{r setup}
+```{r setup, message=FALSE}
 library(tidyverse, quietly = TRUE) # data manipulation
 library(ggdist, quietly = TRUE) # uncertainty vis
 ```
