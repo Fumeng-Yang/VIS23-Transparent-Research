@@ -1,0 +1,52 @@
+---
+title: "Generating synthetic data"
+output: 
+   github_document:
+    html_preview: false
+    df_print: kable
+    number_sections: yes
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+---
+
+The purpose of this document is to generate some synthetic data to (1) think about the data generation process (2) figure out visualization and modeling plans. This is a good practice in conducing an experiment.
+
+Our research question is people's badge/button preference over two designs: `cat` and `logo`. They are measured by three statements, each on a 5-point Likert scale. The assumption behind a Likert scale is that the responses are generated from an underlying normal distribution. So, we can either average these ordinal responses first and then analyze the average, or we can model them using an ordinal regression first and then average the posteriors. 
+
+We first load packages
+
+```{r setup}
+library(tidyverse, quietly = TRUE)
+```
+
+Assuming we want 10 participant. And let's assume an underlying normal distribution N(0.5, 1) for the cat button, and an  underlying normal distribution N(0.35, 1) for the logo button.
+
+```{r}
+N_participant = 10
+
+mu_cat = .5
+mu_logo = .35
+sigma = 1
+```
+
+```{r}
+
+get_a_response = function(){
+  q = pnorm(rnorm(1, mean = mu_cat, sd = sigma), mean = 0, sd = 1)
+  if(q < )
+}
+
+cat_data = 
+  tibble(
+    pid = rep(paste0('P', 1:10), each = 3),
+    q = rep(c(paste0('cat_', 1:3)), times = 10), 
+    response = NA
+  )
+
+cat_data
+
+
+
+```
+
+
+

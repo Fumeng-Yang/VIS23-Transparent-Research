@@ -1,0 +1,79 @@
+
+
+
+```{r setup}
+library(tidyverse, quietly = TRUE) # data manipulation
+library(ggdist, quietly = TRUE) # uncertainty vis
+library(brms, quietly = TRUE) # bayesian modeling
+library(tidybayes, quietly = TRUE) # deal with posteriors
+library(posterior, quietly = TRUE) # deal with posteriors
+```
+
+```{r message=FALSE}
+theme_set(theme_ggdist())
+
+scale_color_vis23 = \(...) scale_color_manual(..., 
+                                              values = c("cat" = '#e888b3', 
+                                                         "logo" ='#277cbd'),
+                                              aesthetics = c("color", "fill")
+)
+
+```
+
+
+```{r}
+df <- read_csv(file = 'data/preference.csv', show_col_types = FALSE)
+```
+
+there are many things we can do here. 
+1. ordinal regression
+2. parameterization
+...
+
+```{r}
+df_aggregated = 
+  df %>% group_by(participantID, design) %>%
+  reframe(preference_mean = mean(response))
+```
+
+
+```{r}
+m = brm(
+  preference_mean ~ design,
+  data = df_aggregated,
+  family = 'gaussian',
+  backend = 'cmdstanr',
+  refresh = 2000,
+  prior = c(prior(normal(0,2.5), class='b'),
+            prior(normal(0,2.5), class='Intercept'),
+            prior(normal(0,1), class='sigma', lb = 0))
+)
+```
+
+```{r}
+posteriors = 
+  tibble(design = c('logo', 'cat')) %>% 
+  add_epred_rvars(m, value = '.value')
+```
+
+
+
+```{r}
+ posteriors %>% 
+  ggplot() +
+  stat_slab(aes(xdist = .value, y = design, fill = design)) +
+  scale_color_vis23()
+```
+
+
+```{r}
+ posteriors %>% 
+  compare_levels(variable = '.value', by = design, comparison = list(c('cat', 'logo'))) %>% 
+  ggplot() +
+  stat_slab(aes(xdist = .value, y = design), alpha = .7) +
+  geom_vline(xintercept = 0, linetype = 2) + 
+  scale_color_vis23() +
+  xlab('') + ylab('')
+```
+
+
