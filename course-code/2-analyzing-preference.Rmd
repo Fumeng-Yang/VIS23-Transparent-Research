@@ -30,14 +30,47 @@ scale_color_vis23 = \(...) scale_color_manual(...,
 df <- read_csv(file = 'data/preference.csv', show_col_types = FALSE)
 ```
 
-there are many things we can do here. 
-1. ordinal regression
-2. parameterization
-...
+
+## Fully-aggregated data
+
+Let us say, we want to determine, on average, which badge is rateed higher. One way to do this would be to calculate the mean and standard deviations of the responses aggregated at the participant level:
+
+```{r}
+df_mean = df_aggregated |> 
+  group_by(design) |> 
+  reframe(preference_mean = mean(mean_response), preference_sd = sd(mean_response))
+```
+
+
+```{r, fig.height = 2, fig.width = 7}
+df_mean |> 
+  ggplot(aes(x = preference_mean,  y = design, fill = design, color = design)) + 
+  geom_errorbarh(aes(xmin = preference_mean - preference_sd, xmax = preference_mean + preference_sd), height = 0, linewidth = 1) + 
+  geom_point(size = 3) + 
+  scale_x_continuous(breaks = 1:7, limits = c(1,5.1)) + 
+  labs(x = "preference") +
+  scale_color_vis23()
+```
+
+This graph shows that the survey participants likely rated the cat badge higher on average than the logo badge, but there's a lot of variation. However, this visualisation is less expressive and usable. What is the distribution of participants' responses?
+
+```{r, fig.height = 2, fig.width = 7}
+df_mean |> 
+  ggplot(aes(x = preference_mean,  y = design, fill = design, color = design)) + 
+  geom_errorbarh(aes(xmin = preference_mean - preference_sd, xmax = preference_mean + preference_sd), height = 0, linewidth = 1) + 
+  geom_point(size = 3) + 
+  geom_point(data = df, aes(x = response, y = design), position = position_jitter(width = 0, height = .2, seed = 1234), alpha = 0.5) +
+  scale_x_continuous(breaks = 1:7, limits = c(1, 5.1)) + 
+  labs(x = "preference") +
+  scale_color_vis23()
+```
+Now, we see that many more participants clearly prefer the cat badge than the logo badge. In other words, this representation allows you to answer two questions:
+1. which badge is rated higher on average?
+2. what proportion of participants are likely to rate the cat badge higher than the logo badge?
 
 ```{r}
 df_aggregated = 
-  df %>% group_by(participantID, design) %>%
+  df |> group_by(participantID, design) |>
   reframe(preference_mean = mean(response))
 ```
 
@@ -49,6 +82,9 @@ m = brm(
   family = 'gaussian',
   backend = 'cmdstanr',
   refresh = 2000,
+  cores = 4,
+  chains = 4,
+  file = "data/likert-model",
   prior = c(prior(normal(0,2.5), class='b'),
             prior(normal(0,2.5), class='Intercept'),
             prior(normal(0,1), class='sigma', lb = 0))
@@ -57,14 +93,14 @@ m = brm(
 
 ```{r}
 posteriors = 
-  tibble(design = c('logo', 'cat')) %>% 
+  tibble(design = c('logo', 'cat')) |> 
   add_epred_rvars(m, value = '.value')
 ```
 
 
 
 ```{r}
- posteriors %>% 
+ posteriors |> 
   ggplot() +
   stat_slab(aes(xdist = .value, y = design, fill = design)) +
   scale_color_vis23()
@@ -72,8 +108,8 @@ posteriors =
 
 
 ```{r}
- posteriors %>% 
-  compare_levels(variable = '.value', by = design, comparison = list(c('cat', 'logo'))) %>% 
+ posteriors |> 
+  compare_levels(variable = '.value', by = design, comparison = list(c('cat', 'logo'))) |> 
   ggplot() +
   stat_slab(aes(xdist = .value, y = design), alpha = .7) +
   geom_vline(xintercept = 0, linetype = 2) + 
