@@ -12,7 +12,7 @@ output:
     theme: flatly
     highlight: tango
 date: "`r format(Sys.time(), '%B %d, %Y')`"
-author: "Fumeng Yang, Abhraneel Sarmar, Maryam Hedayati"
+author: "Fumeng Yang, Abhraneel Sarma, Maryam Hedayati"
 ---
 
 This document provides the code for visualizing preference, 
@@ -34,6 +34,15 @@ library(ggdist, quietly = TRUE) # uncertainty vis
 ```
 
 We then load the data
+
+
+```{r, eval = FALSE}
+read_csv('data/VIS23+tutorial_October+10,+2023_07.33.csv', col_names = TRUE, show_col_types = TRUE) |> 
+  select(-IPAddress) |> 
+  filter(row_number() > 3) |> 
+  write.csv('data/vis23-tutorial_anon.csv', row.names = FALSE)
+```
+
 
 ```{r}
 df_raw <- read_csv('data/vis23-tutorial_anon.csv',
@@ -198,19 +207,7 @@ df_long |>
   scale_color_vis23() +
   coord_flip()
 ```
-
-Of course, we can also split them based on different questions. We can also visualization different questions. However, remeber that our research question is people's preference. We would like to focus on this research question first. 
-
-```{r, fig.height = 3, fig.width = 7}
-df_long |> 
-  group_by(qid, response) |> 
-  reframe(n = n()) |> 
-  ggplot(aes(x = qid,  y = n, alpha = response)) + 
-  geom_bar(width = 0.5, position="fill", stat="identity",  fill = 'forestgreen') +
-  ylab('portion') +
-  coord_flip()
-```
-## half-aggregated data
+## Partially-aggregated data
 
 The assumption behind a Likert scale is that the responses are generated from an underlying normal distribution. So, we can either average these ordinal responses first and then analyze the average, or we can model them using an ordinal regression first and then average the posteriors. 
 

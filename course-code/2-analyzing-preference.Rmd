@@ -12,6 +12,9 @@ library(ggdist, quietly = TRUE) # uncertainty vis
 library(brms, quietly = TRUE) # bayesian modeling
 library(tidybayes, quietly = TRUE) # deal with posteriors
 library(posterior, quietly = TRUE) # deal with posteriors
+library(modelr)
+library(broom)
+library(distributional)
 ```
 
 ```{r message=FALSE}
@@ -22,45 +25,66 @@ scale_color_vis23 = \(...) scale_color_manual(...,
                                                          "logo" ='#277cbd'),
                                               aesthetics = c("color", "fill")
 )
-
 ```
 
 
+## Introduction
+
+The goal of most data analysis for scientific studies is not descriptive, but rather inferential i.e. to make generalisable inferences regarding the phenomena of interest. In this example, the (trivial) question is which badge is liekly to be preferred by the audience.
+
+There are several different ways of analysing this dataset:
+
+- we calculate mean and 95% CI of the data aggregated for each respondant for each badge (which can be assumed to be normally distributed)
+- we can conduct a t-test or a regression (which is essentially similar to the previous step, but provides statistics such as p-values)
+- we can use an ordinal regression model to analyse the data
+
+In this document, we will implement each of the analyses, and discuss ways to visualise the results:
+
 ```{r}
-df <- read_csv(file = 'data/preference.csv', show_col_types = FALSE)
+df = read_csv(file = 'data/preference.csv', show_col_types = FALSE)
+
+df_aggregated = df |> 
+  # we aggregate per participant x design
+  group_by(participantID, design) |> 
+  reframe(mean_response = mean(response), sd_response = sd(response))
 ```
 
 
 ## Fully-aggregated data
 
-Let us say, we want to determine, on average, which badge is rateed higher. One way to do this would be to calculate the mean and standard deviations of the responses aggregated at the participant level:
+Let us say, we want to determine, on average, which badge is rated higher. One way to do this would be to calculate the mean and standard error of the responses aggregated at the participant level:
 
 ```{r}
+n = length(unique(df_aggregated$participantID))
+
 df_mean = df_aggregated |> 
   group_by(design) |> 
-  reframe(preference_mean = mean(mean_response), preference_sd = sd(mean_response))
+  reframe(preference_mean = mean(mean_response), preference_se = sd(mean_response) / sqrt(n))
 ```
 
+We can then visualise the 95% Confidence Interval for the preferences for the two badges:
 
 ```{r, fig.height = 2, fig.width = 7}
 df_mean |> 
   ggplot(aes(x = preference_mean,  y = design, fill = design, color = design)) + 
-  geom_errorbarh(aes(xmin = preference_mean - preference_sd, xmax = preference_mean + preference_sd), height = 0, linewidth = 1) + 
+  geom_errorbarh(aes(xmin = preference_mean + qnorm(0.025) * preference_se, xmax = preference_mean + qnorm(0.975) * preference_se), height = 0, linewidth = 1) + 
   geom_point(size = 3) + 
-  scale_x_continuous(breaks = 1:7, limits = c(1,5.1)) + 
+  scale_x_continuous(breaks = 1:7, limits = c(0.9, 5.1)) + 
   labs(x = "preference") +
   scale_color_vis23()
 ```
 
-This graph shows that the survey participants likely rated the cat badge higher on average than the logo badge, but there's a lot of variation. However, this visualisation is less expressive and usable. What is the distribution of participants' responses?
+This graph shows that the survey participants likely rated the cat badge higher on average than the logo badge, but there was a lot of variation in participants individual responses, which are not expressed using just confidence intervals. Moreover, this visualisation is less usable for (probability of superiority questions such as "what is the probability that someone is likely to prefer the cat badge over the logo badge?".
+
+Work by [Zhang et al.](https://www.pnas.org/doi/abs/10.1073/pnas.2302491120) shows that visualising the actual responses, in addition to the mean and 95% CIs can help participants to interpret the variability in the responses.
 
 ```{r, fig.height = 2, fig.width = 7}
 df_mean |> 
   ggplot(aes(x = preference_mean,  y = design, fill = design, color = design)) + 
-  geom_errorbarh(aes(xmin = preference_mean - preference_sd, xmax = preference_mean + preference_sd), height = 0, linewidth = 1) + 
+  geom_errorbarh(aes(xmin = preference_mean + qnorm(0.025) * preference_se, xmax = preference_mean + qnorm(0.975) * preference_se), height = 0, linewidth = 1) + 
   geom_point(size = 3) + 
-  geom_point(data = df, aes(x = response, y = design), position = position_jitter(width = 0, height = .2, seed = 1234), alpha = 0.5) +
-  scale_x_continuous(breaks = 1:7, limits = c(1, 5.1)) + 
+  geom_point(data = df, aes(x = response, y = design), position = position_jitter(width = .05, height = .2, seed = 1234), alpha = 0.5) +
+  scale_x_continuous(breaks = 1:7, limits = c(0.9, 5.1)) +
   labs(x = "preference") +
   scale_color_vis23()
 ```
@@ -68,15 +92,30 @@ Now, we see that many more participants clearly prefer the cat badge than the lo
 1. which badge is rated higher on average?
 2. what proportion of participants are likely to rate the cat badge higher than the logo badge?
 
+## Regression
+
 ```{r}
-df_aggregated = 
-  df |> group_by(participantID, design) |>
-  reframe(preference_mean = mean(response))
+m.linear = lm(preference_mean ~ 0 + design, data = df_aggregated)
 ```
 
 
 ```{r}
-m = brm(
+m.linear |> 
+  tidy() |> 
+  mutate(term = ifelse(term == "designcat", "cat", "logo")) |> 
+  ggplot(aes(y = term, fill = term)) +
+  stat_halfeye(
+    aes(xdist = dist_student_t(df = df.residual(m.linear), mu = estimate, sigma = std.error)),
+    alpha = 0.7,
+    .width = .95
+  ) +
+  scale_color_vis23() +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+m.reg = brm(
   preference_mean ~ design,
   data = df_aggregated,
   family = 'gaussian',
@@ -84,7 +123,7 @@ m = brm(
   refresh = 2000,
   cores = 4,
   chains = 4,
-  file = "data/likert-model",
+  file = "data/likert-reg_model",
   prior = c(prior(normal(0,2.5), class='b'),
             prior(normal(0,2.5), class='Intercept'),
             prior(normal(0,1), class='sigma', lb = 0))
@@ -103,7 +142,9 @@ posteriors =
  posteriors |> 
   ggplot() +
   stat_slab(aes(xdist = .value, y = design, fill = design)) +
-  scale_color_vis23()
+  coord_cartesian(xlim = c(0.8, 5.2)) +
+  scale_color_vis23() +
+  theme(legend.position = "none")
 ```
 
 
@@ -116,5 +157,78 @@ posteriors =
   scale_color_vis23() +
   xlab('') + ylab('')
 ```
+
+
+## Ordinal regression
+
+```{r}
+priors.ord = c(
+  prior(normal(0, 1.5), class = "b"),
+  prior(student_t(3, 0, 2.5), class = "Intercept"),
+  prior(student_t(3, 0, 1), class = "sd")
+)
+
+m.ord = brm(
+  response ~ design + (1 | participantID) + (1|qid),
+  family = cumulative(link = "logit"), 
+  prior = priors.ord,
+  data = df, 
+  file = "data/likert-ordinal_model",
+  backend = "cmdstanr",
+  cores = 4, chains = 4, iter = 4000, warmup = 3000, control = list(adapt_delta = 0.9))
+```
+
+Ordinal regression estimates the probability that a participant will choose each likert item (for each condition). Below, we visualise these (cumulative) probabilities along with the associated uncertainty. Note that both the probabilities some up to 1.
+
+```{r, fig.height = 3, fig.width = 7}
+df |> 
+  data_grid(design) |> 
+  add_epred_draws(m.ord, re_formula = NA, ndraws = 100) |> 
+  group_by(design, .draw) |> 
+  mutate(.epred = cumsum(.epred)) |> 
+  ggplot() +
+  stat_pointinterval(aes(x = .category, y = .epred, colour = design), .width = .95, position = position_dodge(width = .1)) +
+  # geom_line(aes(x = .category, y = .epred, group = design, colour = design), position = position_dodge(width = .05)) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.2)) +
+  scale_color_vis23() +
+  theme(legend.position = "none")
+```
+This visualisation shows you that the logo badge is much more likelier to receive lower ratings (1 - 4) than the cat badge. However, this representation is has some shortcomings.
+
+Alternatively, ...
+
+```{r}
+df |> 
+  data_grid(design, qid) |> 
+  add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 1000) |> 
+  mutate(.epred = .epred * as.numeric(.category)) |> 
+  group_by(design, .draw, qid) |> 
+  summarise(.epred = sum(.epred), .groups = "drop_last") |>
+  summarise(.epred = mean(.epred), .groups = "drop_last") |>
+  ggplot() +
+  stat_slabinterval(aes(x = .epred, y = design, fill = design), alpha = 0.7, .width = .95) +
+  coord_cartesian(xlim = c(0.8, 5.2)) +
+  scale_color_vis23() +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+df |> 
+  data_grid(design, qid) |> 
+  add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 2000) |> 
+  mutate(.epred = .epred * as.numeric(.category)) |> 
+  group_by(design, .draw, qid) |> 
+  summarise(.epred = sum(.epred), .groups = "drop_last") |>
+  summarise(.epred = mean(.epred), .groups = "drop_last") |>
+  ggplot() +
+  stat_slab(aes(x = .epred, y = design, fill = design), scale = 0.7, alpha = 0.4, .width = .95) +
+  geom_point(data = df, aes(x = response, y = design, colour = design), position = position_jitter(width = .05, height = .1, seed = 1234), alpha = 0.7) +
+  coord_cartesian(xlim = c(0.8, 5.2)) +
+  scale_color_vis23() +
+  theme(legend.position = "none")
+```
+
+
 
 
