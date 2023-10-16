@@ -74,6 +74,14 @@ df = df_raw |>
 head(df)
 ```
 
+```{r}
+df |> 
+  pivot_longer(cols = c(cat_1:logo_3), names_pattern = "([a-z]+)_([0-9])", names_to = c("badge", "question"), values_to = "rating") |> 
+  group_by(badge, rating) |> 
+  summarise(count = n(), .groups = "keep") |> 
+  pivot_wider(names_from = "rating", values_from = "count")
+```
+
 
 Let's continue transforming data into a more workable format.
 

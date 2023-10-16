@@ -59,10 +59,10 @@ n = length(unique(df_aggregated$participantID))
 
 df_mean = df_aggregated |> 
   group_by(design) |> 
-  reframe(preference_mean = mean(mean_response), preference_se = sd(mean_response) / sqrt(n))
+  reframe(preference_mean = mean(mean_response), preference_se = sd(mean_response) / sqrt(n - 1))
 ```
 
-We can then visualise the 95% Confidence Interval for the preferences for the two badges:
+The code below visualises the 95% Confidence Interval for the preferences for the two badges. The errorbars are drawn using `geom_errorbarh()` function which takes in the arguments `x`, `xmin`, `xmax` and `y`; the `xmin` and `xmax` represent the ends of the error bars which are calculated as $qnorm(0.025) \times se$ and $qnorm(0.975) \times se$, where the $se$ is calculated as the standard deviation divided by $\sqrt{n - 1}$.
 
 ```{r, fig.height = 2, fig.width = 7}
 df_mean |> 
@@ -74,7 +74,7 @@ df_mean |>
   scale_color_vis23()
 ```
 
-This graph shows that the survey participants likely rated the cat badge higher on average than the logo badge, but there was a lot of variation in participants individual responses, which are not expressed using just confidence intervals. Moreover, this visualisation is less usable for (probability of superiority questions such as "what is the probability that someone is likely to prefer the cat badge over the logo badge?".
+This graph shows that the survey participants likely rated the cat badge higher on average than the logo badge, but there was a lot of variation in participants individual responses, which are not expressed using just confidence intervals. Moreover, this visualisation is less usable for (probability of superiority questions such as "what is the probability that someone is likely to prefer the cat badge over the logo badge?").
 
 Work by [Zhang et al.](https://www.pnas.org/doi/abs/10.1073/pnas.2302491120) shows that visualising the actual responses, in addition to the mean and 95% CIs can help participants to interpret the variability in the responses.
 
@@ -88,34 +88,94 @@ df_mean |>
   labs(x = "preference") +
   scale_color_vis23()
 ```
+
 Now, we see that many more participants clearly prefer the cat badge than the logo badge. In other words, this representation allows you to answer two questions:
 1. which badge is rated higher on average?
 2. what proportion of participants are likely to rate the cat badge higher than the logo badge?
 
 ## Regression
 
+The second approach was using a linear regression model. In cases such as this, where the independent variable is discrete, it is essentially similar to the previous approach. However, this method is much more extensible.
+
+Let us first fit the model, and look at the coefficients:
+
 ```{r}
-m.linear = lm(preference_mean ~ 0 + design, data = df_aggregated)
+m.linear = lm(mean_response ~ 0 + design, data = df_aggregated)
+
+summary(m.linear)
 ```
 
+We can plot the results of this model using:
 
-```{r}
+- confidence intervals
+- density plots
+- gradient interval plots
+
+(or other ways, but those do not seem very relevant for reporting scientific results in a paper)
+
+### Confidence Intervals
+
+As you can see, these plots are very much exactly similar to the plots created previously.
+
+```{r, fig.height = 3, fig.width = 7}
 m.linear |> 
   tidy() |> 
   mutate(term = ifelse(term == "designcat", "cat", "logo")) |> 
-  ggplot(aes(y = term, fill = term)) +
-  stat_halfeye(
+  ggplot(aes(y = term, color = term)) +
+  stat_pointinterval(
     aes(xdist = dist_student_t(df = df.residual(m.linear), mu = estimate, sigma = std.error)),
     alpha = 0.7,
     .width = .95
   ) +
   scale_color_vis23() +
+  scale_x_continuous(breaks = 1:7, limits = c(0.9, 5.1)) +
   theme(legend.position = "none")
 ```
 
+### Density plots
+
+Density plots show the entire distribution of the estimated model coefficients. You can choose to either add or omit the confidence intervals to these density plots.
+
+```{r, fig.height = 3, fig.width = 7}
+m.linear |> 
+  tidy() |> 
+  mutate(term = ifelse(term == "designcat", "cat", "logo")) |> 
+  ggplot(aes(y = term, fill = term)) +
+  stat_slab(
+    aes(xdist = dist_student_t(df = df.residual(m.linear), mu = estimate, sigma = std.error)),
+    alpha = 0.7,
+    .width = .95
+  ) +
+  scale_color_vis23() +
+  scale_x_continuous(breaks = 1:7, limits = c(0.9, 5.1)) +
+  theme(legend.position = "none")
+```
+
+### Gradient plots
+
+A third approach would be to use gradient intervals which encodes uncertainty to opacity. Like density plots, you can augment them using point intervals or error bars.
+
+```{r, fig.height = 3, fig.width = 7}
+m.linear |> 
+  tidy() |> 
+  mutate(term = ifelse(term == "designcat", "cat", "logo")) |> 
+  ggplot(aes(y = term, fill = term)) +
+  stat_gradientinterval(
+    aes(xdist = dist_student_t(df = df.residual(m.linear), mu = estimate, sigma = std.error)),
+    geom = "slab",
+    fill_type = "gradient",
+    height = .5
+  ) +
+  scale_color_vis23() +
+  scale_x_continuous(breaks = 1:7, limits = c(0.9, 5.1)) +
+  theme(legend.position = "none")
+```
+
+## Bayesian regression
+The same linear regression model can be implemented using Bayesian regression methods. In R, we recommend using `brms` which provides syntax which is very similar to the `glmer` syntax. Bayesian models require you to specify prior distributions, and define a likelihood function. The regression model estimates a posterior distribution, using Bayes rule.
 
 ```{r}
-m.reg = brm(
+m.linear.bayes = brm(
   preference_mean ~ design,
   data = df_aggregated,
   family = 'gaussian',
@@ -130,15 +190,24 @@ m.reg = brm(
 )
 ```
 
+Once you have the fitted model, you will need to extract posterior draws. The `tidybayes` R package facilitates this. For instance, the code below shows five posterior draws for each design.
+
+```{r}
+tibble(design = c('logo', 'cat')) |> 
+  add_epred_draws(m.linear.bayes, value = '.value', ndraws = 5)
+```
+
+We store these posterior draws into the `posterior` variable:
+
 ```{r}
 posteriors = 
   tibble(design = c('logo', 'cat')) |> 
-  add_epred_rvars(m, value = '.value')
+  add_epred_rvars(m.linear.bayes, value = '.value')
 ```
 
+We can then visualise these posterior draws:
 
-
-```{r}
+```{r fig.width = 7, fig.height = 3}
  posteriors |> 
   ggplot() +
   stat_slab(aes(xdist = .value, y = design, fill = design)) +
@@ -147,8 +216,9 @@ posteriors =
   theme(legend.position = "none")
 ```
 
+We can also compute the difference between the two conditions, two estimate the probability of one badge being preferred over the other, and by how much.
 
-```{r}
+```{r fig.width = 7, fig.height = 2}
  posteriors |> 
   compare_levels(variable = '.value', by = design, comparison = list(c('cat', 'logo'))) |> 
   ggplot() +
@@ -158,8 +228,9 @@ posteriors =
   xlab('') + ylab('')
 ```
 
-
 ## Ordinal regression
+
+An alternative way of analysing the likert data is using an ordinal regression model. In modeling each outcome value, we have to keep in mind that these values are ordered, because 5 is greater than 4, which is greater than 3, and so on. But unlike a count, the differences in value are not necessarily equal. It might be much harder to move someone’s preference for the cat badge from 1 to 2 than it is to move it from 3 to 4, for example. Just treating ordered categories as continuous measures is not a good idea [McElreath, Statisitical Rethinking](). Thus, ordinal regression is perhaps more appropriate for modeling likert data.
 
 ```{r}
 priors.ord = c(
@@ -197,7 +268,7 @@ This visualisation shows you that the logo badge is much more likelier to receiv
 
 Alternatively, ...
 
-```{r}
+```{r fig.width = 7, fig.height = 3}
 df |> 
   data_grid(design, qid) |> 
   add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 1000) |> 
@@ -206,14 +277,15 @@ df |>
   summarise(.epred = sum(.epred), .groups = "drop_last") |>
   summarise(.epred = mean(.epred), .groups = "drop_last") |>
   ggplot() +
-  stat_slabinterval(aes(x = .epred, y = design, fill = design), alpha = 0.7, .width = .95) +
+  stat_slab(aes(x = .epred, y = design, fill = design), scale = 0.8, alpha = 0.4) +
+  stat_pointinterval(aes(x = .epred, y = design, colour = design), .width = .95) +
   coord_cartesian(xlim = c(0.8, 5.2)) +
   scale_color_vis23() +
   theme(legend.position = "none")
 ```
 
 
-```{r}
+```{r fig.width = 7, fig.height = 3}
 df |> 
   data_grid(design, qid) |> 
   add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 2000) |> 
@@ -228,6 +300,7 @@ df |>
   scale_color_vis23() +
   theme(legend.position = "none")
 ```
+
 
 
 
