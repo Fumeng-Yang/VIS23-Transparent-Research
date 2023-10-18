@@ -1,20 +1,30 @@
 ---
+title: "Analyzing the preference data"
 output: 
   html_document: 
-    theme: simplex
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
+    df_print: kable
+    number_sections: yes
+    theme: flatly
+    highlight: tango
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+author: "Fumeng Yang, Abhraneel Sarma, Maryam Hedayati"
 ---
 
 
-
-```{r setup}
+```{r setup, message=FALSE}
 library(tidyverse, quietly = TRUE) # data manipulation
 library(ggdist, quietly = TRUE) # uncertainty vis
 library(brms, quietly = TRUE) # bayesian modeling
 library(tidybayes, quietly = TRUE) # deal with posteriors
 library(posterior, quietly = TRUE) # deal with posteriors
-library(modelr)
-library(broom)
-library(distributional)
+library(modelr, quietly = TRUE)
+library(broom, quietly = TRUE)
+library(distributional, quietly = TRUE)
 ```
 
 ```{r message=FALSE}
@@ -28,7 +38,7 @@ scale_color_vis23 = \(...) scale_color_manual(...,
 ```
 
 
-## Introduction
+# Introduction
 
 The goal of most data analysis for scientific studies is not descriptive, but rather inferential i.e. to make generalisable inferences regarding the phenomena of interest. In this example, the (trivial) question is which badge is liekly to be preferred by the audience.
 
@@ -50,7 +60,7 @@ df_aggregated = df |>
 ```
 
 
-## Fully-aggregated data
+# Fully-aggregated data
 
 Let us say, we want to determine, on average, which badge is rated higher. One way to do this would be to calculate the mean and standard error of the responses aggregated at the participant level:
 
@@ -93,7 +103,7 @@ Now, we see that many more participants clearly prefer the cat badge than the lo
 1. which badge is rated higher on average?
 2. what proportion of participants are likely to rate the cat badge higher than the logo badge?
 
-## Regression
+# Regression
 
 The second approach was using a linear regression model. In cases such as this, where the independent variable is discrete, it is essentially similar to the previous approach. However, this method is much more extensible.
 
@@ -171,7 +181,8 @@ m.linear |>
   theme(legend.position = "none")
 ```
 
-## Bayesian regression
+# Bayesian regression
+
 The same linear regression model can be implemented using Bayesian regression methods. In R, we recommend using `brms` which provides syntax which is very similar to the `glmer` syntax. Bayesian models require you to specify prior distributions, and define a likelihood function. The regression model estimates a posterior distribution, using Bayes rule.
 
 ```{r}
@@ -254,7 +265,7 @@ Ordinal regression estimates the probability that a participant will choose each
 ```{r, fig.height = 3, fig.width = 7}
 df |> 
   data_grid(design) |> 
-  add_epred_draws(m.ord, re_formula = NA, ndraws = 100) |> 
+  add_epred_draws(m.ord, re_formula = NA, ndraws = 100, seed = 1234) |> 
   group_by(design, .draw) |> 
   mutate(.epred = cumsum(.epred)) |> 
   ggplot() +
@@ -264,6 +275,7 @@ df |>
   scale_color_vis23() +
   theme(legend.position = "none")
 ```
+
 This visualisation shows you that the logo badge is much more likelier to receive lower ratings (1 - 4) than the cat badge. However, this representation is has some shortcomings.
 
 Alternatively, ...
@@ -271,7 +283,7 @@ Alternatively, ...
 ```{r fig.width = 7, fig.height = 3}
 df |> 
   data_grid(design, qid) |> 
-  add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 1000) |> 
+  add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 1000, seed = 1234) |> 
   mutate(.epred = .epred * as.numeric(.category)) |> 
   group_by(design, .draw, qid) |> 
   summarise(.epred = sum(.epred), .groups = "drop_last") |>
@@ -288,7 +300,7 @@ df |>
 ```{r fig.width = 7, fig.height = 3}
 df |> 
   data_grid(design, qid) |> 
-  add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 2000) |> 
+  add_epred_draws(m.ord, re_formula = ~ (1 | qid), ndraws = 2000, seed = 1234) |> 
   mutate(.epred = .epred * as.numeric(.category)) |> 
   group_by(design, .draw, qid) |> 
   summarise(.epred = sum(.epred), .groups = "drop_last") |>
@@ -300,6 +312,8 @@ df |>
   scale_color_vis23() +
   theme(legend.position = "none")
 ```
+
+
 
 
 
