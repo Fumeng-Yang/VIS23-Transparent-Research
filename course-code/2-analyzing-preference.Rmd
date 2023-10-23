@@ -51,7 +51,7 @@ There are several different ways of analysing this dataset:
 In this document, we will implement each of the analyses, and discuss ways to visualise the results:
 
 ```{r}
-df = read_csv(file = 'data/preference.csv', show_col_types = FALSE)
+df = read_csv(file = 'data/preference2.csv', show_col_types = FALSE)
 
 df_aggregated = df |> 
   # we aggregate per participant x design
